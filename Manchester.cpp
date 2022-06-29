@@ -1,167 +1,71 @@
+#ifndef Manchester_H
+#define Manchester_H
 
-#include "Manchester.h"
-
-void Manchester::readRiseEdge(){
-    Bit = 1;
-}
-
-void Manchester::readFallEdge(){
-    Bit = 0;
-}
-
-void Manchester::readBit() {
-    
+#include "mbed.h"
+#include "DigitalIn.h"
+#include "Timeout.h"
+#include "InterruptIn.h"
+#include "ThisThread.h"
+#include "Thread.h"
 
 
-    if (rxFrame.state.dataLen != 0) {
-        rxFrame.state.dataLen--;
-        rxFrame.dataByte >>= 1;
-        rxFrame.dataByte |= Bit ? 0x80 : 0x00;
-    
-    }  
-    else{
-            
-            uint8_t wPointer = rxFrame.wPointer++;
 
-            rxFrame.wPointer = rxFrame.wPointer < sizeof(rxFrame.buffer) ? rxFrame.wPointer : 0;
-            
-            if (rxFrame.wPointer == rxFrame.rPointer) {
-                rxFrame.wPointer = wPointer;
 
-            }
-            rxFrame.buffer[wPointer] = rxFrame.dataByte;
-            resetRead();           
-            return;
-        
-    }
+struct DataFrame{
+
+    uint8_t buffer[32];
+    int rPointer;
+    int wPointer;
+    uint8_t dataByte;
+
    
 
-    rxClock.attach_us(callback(this, &Manchester::readBit),boudRateUs-25);    
-    
-    return;
-
+    volatile struct {
+        bool isBusy:1;
+        unsigned int dataLen=8;
+    } state;
 };
 
-int Manchester::read() {
- 
-    if (rxFrame.rPointer == rxFrame.wPointer) {
-            return -1;
-        }
+class Manchester {
 
-    int c = rxFrame.buffer[rxFrame.rPointer++];
-    rxFrame.rPointer = rxFrame.rPointer < sizeof(rxFrame.buffer) ? rxFrame.rPointer : 0;
-    
-    return c;
-};
-
-void Manchester::resetRead(){
-    
-    rxFrame.state.isBusy = 0;
-    rxFrame.state.dataLen   = 8;
-
-    rxInterrupt.fall(callback(this,&Manchester::initRx));
-    rxInterrupt.rise(callback(this,&Manchester::initRx));
-    
-}
-
-
-void Manchester::initRx(){
-
-    if (rxFrame.state.isBusy == 0) {
-      
-        rxFrame.state.isBusy = 1;
-        rxFrame.state.dataLen   = 8;
-
-        rxInterrupt.fall(callback(this,&Manchester::readFallEdge));
-        rxInterrupt.rise(callback(this,&Manchester::readRiseEdge));
-
-        rxClock.attach_us(callback(this,&Manchester::readBit),(boudRateUs-25));     
-    }
-
-};
-
-void Manchester::sendBit() {
-
-    int dataBit;
-
-    if (txFrame.state.dataLen) {
-        
-        dataBit = txFrame.dataByte & 0x01;
-
-        if(txFrame.state.dataLen%2 == 0 ){
-            tx.write(!dataBit);
-        }else{
-            tx.write(dataBit);
-            txFrame.dataByte >>= 1;
-
-
-        }
-
-        txFrame.state.dataLen--;
-    }
-    else {
-
-        if (txFrame.rPointer == txFrame.wPointer) {
-            txFrame.state.isBusy = 0;
-
-            return;
-        }
-
-        txFrame.dataByte = txFrame.buffer[txFrame.rPointer++];
-        txFrame.rPointer = txFrame.rPointer < sizeof(txFrame.buffer) ? txFrame.rPointer : 0;
-        
-        
-        dataBit = 0;
-    }
-   
-    txClock.attach_us(callback(this,&Manchester::sendBit),(boudRateUs-5)/2);
-    
-};
-
-int Manchester::write(uint8_t c) {
-
-    uint8_t wPointer = txFrame.wPointer++;
-    
-    txFrame.wPointer = txFrame.wPointer < sizeof(txFrame.buffer) ? txFrame.wPointer : 0;
-    
-    if (txFrame.wPointer == txFrame.rPointer) {
-        txFrame.wPointer = wPointer;
-
-    }
-    txFrame.buffer[wPointer] = c;
-
-
-
-    if (txFrame.state.isBusy == 0) {
-        txFrame.state.isBusy = 1;
-        txFrame.state.dataLen = 16;
-        tx.write(!tx.read());
-        
-        sendBit();
+    private:
 
         
-    }
-   
-    return c;
+     
+        Timer t;
+
+        unsigned int boudRateUsTx = 86; 
+        unsigned int boudRateUsRx = 0;
+
+        Timeout rxClock;
+        Timeout txClock;
+
+        int Bit=0;
+
+        DigitalOut tx;
+        DigitalIn rx;
+        InterruptIn rxInterrupt;
+
+        struct DataFrame rxFrame;
+        struct DataFrame txFrame;
+
+
+        void sync();
+        void initRx();
+        void readRiseEdge();
+        void readFallEdge();
+        void readBit();
+        void sendBit();
+        void resetRead();
+
+        public:
+            Manchester(PinName rxPin, PinName txPin);
+            int read();
+            int write(uint8_t chr,int boudRateUsTx);
+
+        
+
 
 };
 
-
-Manchester::Manchester(PinName rxPin, PinName txPin,int boudRate): rxInterrupt(rxPin),tx(txPin),rx(rxPin)
-{
-    tx.write(1);
-    rxFrame.state.isBusy = 0;
-    txFrame.state.isBusy = 0;  
-    rxInterrupt.fall(callback(this,&Manchester::initRx));
-    rxInterrupt.rise(callback(this,&Manchester::initRx));
-
-    boudRateUs = floor(1000000/boudRate)-21;
-};
-
-
-
-
-
-
-
-
+#endif
