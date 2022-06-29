@@ -1,4 +1,3 @@
-
 #ifndef Manchester_H
 #define Manchester_H
 
@@ -19,6 +18,8 @@ struct DataFrame{
     int wPointer;
     uint8_t dataByte;
 
+   
+
     volatile struct {
         bool isBusy:1;
         unsigned int dataLen=8;
@@ -29,7 +30,12 @@ class Manchester {
 
     private:
 
-        unsigned int boudRateUs = 86; 
+        
+     
+        Timer t;
+
+        unsigned int boudRateUsTx = 86; 
+        unsigned int boudRateUsRx = 0;
 
         Timeout rxClock;
         Timeout txClock;
@@ -43,6 +49,8 @@ class Manchester {
         struct DataFrame rxFrame;
         struct DataFrame txFrame;
 
+
+        void sync();
         void initRx();
         void readRiseEdge();
         void readFallEdge();
@@ -51,9 +59,9 @@ class Manchester {
         void resetRead();
 
         public:
-            Manchester(PinName rxPin, PinName txPin,int);
+            Manchester(PinName rxPin, PinName txPin);
             int read();
-            int write(uint8_t chr);
+            int write(uint8_t chr,int boudRateUsTx);
 
         
 
